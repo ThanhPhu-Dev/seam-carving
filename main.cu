@@ -22,8 +22,8 @@ const int filterWidth = 3;
  * @param argc[4] - optional - default(32): blocksize.x
  * @param argc[5] - optional - default(32): blocksize.y
  */
-void checkInput(int argc, char ** argv, int &width, int &height, uchar3 * &rgbPic, int &desiredWidth, dim3 &blockSize) {
-    if (argc != 4 && argc != 6) {
+void checkInput(int argc, char ** argv, int &width, int &height, uchar3 * &rgbPic, int &desiredWidth, dim3 &blockSize, int &isStripHeight) {
+    if (argc != 4 && argc != 6 && argc != 5) {
         printf("The number of arguments is invalid\n");
         exit(EXIT_FAILURE);
     }
@@ -43,16 +43,22 @@ void checkInput(int argc, char ** argv, int &width, int &height, uchar3 * &rgbPi
         exit(EXIT_FAILURE);
     }
 
+    if (argc == 5) {
+        isStripHeight = atoi(argv[4]);
+    }else{
+        isStripHeight = 0;
+    }
+
     // Block size
-    if (argc == 6) {
-        blockSize.x = atoi(argv[4]);
-        blockSize.y = atoi(argv[5]);
+    if (argc == 7) {
+        blockSize.x = atoi(argv[5]);
+        blockSize.y = atoi(argv[6]);
     } 
+
 
     // Check GPU is working or not
     printDeviceInfo();
 }
-
 
 __global__ void convertRgb2GrayKernel(uchar3 * rgbPic, int width, int height, uint8_t * grayPic) {
     int r = blockIdx.y * blockDim.y + threadIdx.y;
@@ -195,6 +201,40 @@ __global__ void energyToTheEndKernel(int * energy, int * minimalEnergy, int widt
     }
 }
 
+__global__ void energyToTheEndKernelNotStripHeight(int * energy, int * minimalEnergy, int width, int height) {
+    size_t halfBlock = blockDim.x / 2;//blockDim.x >> 1
+
+    int col = blockIdx.x * halfBlock - halfBlock + threadIdx.x;
+
+    if (col >= 0 && col < width) {
+        minimalEnergy[col] = energy[col];
+    }
+    __syncthreads();
+
+    for (int stride = 0; stride < blockDim.x; ++stride) {
+        if (threadIdx.x < blockDim.x - (stride << 1)) {
+            int curRow = stride;
+            int curCol = col + stride;
+
+            if (curCol >= 0 && curCol < width) {
+                int idx = curRow * d_WIDTH + curCol;
+                int aboveIdx = (curRow - 1) * d_WIDTH + curCol;
+
+                int min = minimalEnergy[aboveIdx];
+                if (curCol > 0 && minimalEnergy[aboveIdx - 1] < min)
+                    min = minimalEnergy[aboveIdx - 1];
+                
+                if (curCol < width - 1 && minimalEnergy[aboveIdx + 1] < min)
+                    min = minimalEnergy[aboveIdx + 1];
+                
+
+                minimalEnergy[idx] = min + energy[idx];
+            }
+        }
+        __syncthreads();
+    }
+}
+
 void deviceResizing(uchar3 * inPixels, int width, int height, int desiredWidth, uchar3 * outPixels, dim3 blockSize) {
     GpuTimer timer;
     timer.Start();
@@ -240,11 +280,16 @@ void deviceResizing(uchar3 * inPixels, int width, int height, int desiredWidth, 
         CHECK(cudaGetLastError());
 
         // compute min seam table
-        for (int i = 0; i < height; i += (stripHeight >> 1)) {
-            energyToTheEndKernel<<<gridSizeDp, blockSizeDp>>>(d_energy, d_minimalEnergy, width, height, i);
-            cudaDeviceSynchronize();
-            CHECK(cudaGetLastError());
+        if(isStripHeight == 1){
+          for (int i = 0; i < height; i += (stripHeight >> 1)) {
+              energyToTheEndKernel<<<gridSizeDp, blockSizeDp>>>(d_energy, d_minimalEnergy, width, height, i);
+          }
         }
+        else{
+          energyToTheEndKernelNotStripHeight<<<gridSizeDp, blockSizeDp>>>(d_energy, d_minimalEnergy, width, height);
+        }
+        cudaDeviceSynchronize();
+        CHECK(cudaGetLastError());
 
         // find least significant pixel index of each row and store in d_leastSignificantPixel (SEQUENTIAL, in kernel or host)
         CHECK(cudaMemcpy(minimalEnergy, d_minimalEnergy, WIDTH * height * sizeof(int), cudaMemcpyDeviceToHost));
@@ -408,9 +453,9 @@ int main(int argc, char ** argv) {
     int width, height, desiredWidth;
     uchar3 * rgbPic;
     dim3 blockSize(32, 32);
-
+    int isStripHeight;
     // Check user's input
-    checkInput(argc, argv, width, height, rgbPic, desiredWidth, blockSize);
+    checkInput(argc, argv, width, height, rgbPic, desiredWidth, blockSize, isStripHeight);
 
     // HOST
     uchar3 * out_host = (uchar3 *)malloc(width * height * sizeof(uchar3));
@@ -418,7 +463,7 @@ int main(int argc, char ** argv) {
 
     // DEVICE
     uchar3 * out_device = (uchar3 *)malloc(width * height * sizeof(uchar3));
-    deviceResizing(rgbPic, width, height, desiredWidth, out_device, blockSize);
+    deviceResizing(rgbPic, width, height, desiredWidth, out_device, blockSize, isStripHeight);
 
     // Compute error
     printError((char * )"Error between device result and host result: ", out_host, out_device, width, height);
