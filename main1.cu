@@ -685,7 +685,7 @@ void hostResizing(uchar3 * inPixels, int width, int height, int desiredWidth, uc
     free(energy);
 
     timer.Stop();
-    timer.printTime((char *)"host improve");
+    timer.printTime((char *)"host");
 }
 
 void hostResizingImprove(uchar3 * inPixels, int width, int height, int desiredWidth, uchar3 * outPixels) {
@@ -768,7 +768,7 @@ void hostResizingImprove(uchar3 * inPixels, int width, int height, int desiredWi
     free(energy);
 
     timer.Stop();
-    timer.printTime((char *)"host");
+    timer.printTime((char *)"host improve");
 }
 
 // -------------------------------------------------Main-------------------------------------------------
@@ -804,7 +804,7 @@ int main(int argc, char ** argv) {
     writePnm(out_host, desiredWidth, height, width, concatStr(argv[2], "_host.pnm"));
     writePnm(out_host_improve, desiredWidth, height, width, concatStr(argv[2], "_hostImprove.pnm"));
     writePnm(out_device, desiredWidth, height, width, concatStr(argv[2], "_device.pnm"));
-    writePnm(out_device_improve, desiredWidth, height, width, concatStr(argv[2], "_deviceImprove.pnm"));
+    writePnm(out_device, desiredWidth, height, width, concatStr(argv[2], "_deviceImprove.pnm"));
 
     // Free memories
     free(rgbPic);
