@@ -592,19 +592,18 @@ void energyToTheEndImprove(int * energy, int * minimalEnergy, int width, int hei
             int idx = rowEnergy * width + colEnergy;
             int underIdx = (rowEnergy + 1) * WIDTH + colEnergy;
 
-            int energy = minimalEnergy[underIdx];
-            if (colEnergy > 0 && minimalEnergy[underIdx - 1] < min) {
-                min = minimalEnergy[underIdx - 1];
+            int minEnergy = minimalEnergy[underIdx];
+            if (colEnergy > 0 && minimalEnergy[underIdx - 1] < minEnergy) {
+                minEnergy = minimalEnergy[underIdx - 1];
             }
-            if (colEnergy < width - 1 && minimalEnergy[underIdx + 1] < min) {
-                min = minimalEnergy[underIdx + 1];
+            if (colEnergy < width - 1 && minimalEnergy[underIdx + 1] < minEnergy) {
+                minEnergy = minimalEnergy[underIdx + 1];
             }
 
-            minimalEnergy[idx] = min + energy[idx];
+            minimalEnergy[idx] = minEnergy + energy[idx];
         }
     }
 }
-
 
 void hostResizing(uchar3 * inPixels, int width, int height, int desiredWidth, uchar3 * outPixels) {
     GpuTimer timer;
